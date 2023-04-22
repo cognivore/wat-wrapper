@@ -7,20 +7,50 @@ enum ToT {
     Tagged(Tagged),
 }
 
-#[derive(Debug, PartialEq, Clone)]
+impl fmt::Display for ToT {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ToT::String(s) => write!(f, "{}", s),
+            ToT::Tagged(t) => write!(f, "{}", t),
+        }
+    }
+}
+
+#[derive(PartialEq, Clone)]
 pub struct Tagged {
     label: String,
     prefix: Vec<ToT>,
     instructions: Vec<ToT>,
 }
 
-impl fmt::Display for Tagged {
+impl fmt::Debug for Tagged {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "Tagged {{ label: \"{}\", prefix: {:#?}, instructions: {:#?} }}",
             self.label, self.prefix, self.instructions
         )
+    }
+}
+
+impl fmt::Display for Tagged {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut buf = String::new();
+
+        buf.push_str(&format!("({} ", self.label));
+
+        // Display prefix by prefix and instruction by instruction
+        self.prefix.iter().for_each(|p| {
+            buf.push_str(&format!("{}\n", p));
+        });
+
+        self.instructions.iter().for_each(|i| {
+            buf.push_str(&format!("{}\n", i));
+        });
+
+        buf.push_str(")");
+
+        write!(f, "{}", buf)
     }
 }
 
@@ -183,7 +213,7 @@ const SCOPEY_INSTRUCTIONS: [&str; 2] = ["block", "loop"];
 
 // Now we process SCOPEY_INSTRUCTIONS symbolicly. An instruction `"s ..."` becomes `"(s ..."` and
 // "end" becomes `")"`.
-pub fn replace_scopey(x: Tagged) -> Tagged {
+pub fn replace_instr(x: Tagged) -> Tagged {
     let mut new_instructions = Vec::new();
 
     for i in x.instructions {
@@ -198,7 +228,7 @@ pub fn replace_scopey(x: Tagged) -> Tagged {
                 } else if s == "end" {
                     new_instructions.push(ToT::String(")".to_string()));
                 } else {
-                    new_instructions.push(ToT::String(s));
+                    new_instructions.push(ToT::String(format!("({})", s)));
                 }
             }
             // We don't really have nested instructions, but if we did we would have had to recur
@@ -214,11 +244,30 @@ pub fn replace_scopey(x: Tagged) -> Tagged {
     }
 }
 
+// Now we iterate over the Tagged and replace scopeys in ToTs.
+pub fn replace_instrs(x: Tagged) -> Tagged {
+    let mut new_prefix = Vec::new();
+
+    for p in x.prefix {
+        match p {
+            ToT::String(s) => new_prefix.push(ToT::String(s)),
+            ToT::Tagged(t) => new_prefix.push(ToT::Tagged(replace_instr(t))),
+        }
+    }
+
+    Tagged {
+        label: x.label,
+        prefix: new_prefix,
+        instructions: x.instructions,
+    }
+}
+
 fn main() {
     // Get input from file "./output.wat", which is the output of preprocessing.
     let input = std::fs::read_to_string("./output.wat").unwrap();
     // TODO: function that manually iterates over Tagged and replaces scopeys for each underlying
     // Tagged found.
-    let parsed: Tagged = unfold_funcs(parse_tagged(&input).unwrap());
+    let parsed: Tagged = replace_instrs(unfold_funcs(parse_tagged(&input).unwrap()));
+    // println!("{:#?}", parsed)
     println!("{}", parsed)
 }
