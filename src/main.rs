@@ -1,13 +1,13 @@
 use std::fmt;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 // Tagged or terminal
 enum ToT {
     String(String),
     Tagged(Tagged),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Tagged {
     label: String,
     prefix: Vec<ToT>,
@@ -178,9 +178,47 @@ pub fn unfold_funcs(x: Tagged) -> Tagged {
     }
 }
 
+// SCOPEY_INSTRUCTIONS are, for the time being just vec!["block", "loop"].
+const SCOPEY_INSTRUCTIONS: [&str; 2] = ["block", "loop"];
+
+// Now we process SCOPEY_INSTRUCTIONS symbolicly. An instruction `"s ..."` becomes `"(s ..."` and
+// "end" becomes `")"`.
+pub fn replace_scopey(x: Tagged) -> Tagged {
+    let mut new_instructions = Vec::new();
+
+    for i in x.instructions {
+        match i {
+            ToT::String(s) => {
+                // Check if the instruction starts with substring that is scopey.
+                if SCOPEY_INSTRUCTIONS
+                    .iter()
+                    .any(|&scopey| s.starts_with(scopey))
+                {
+                    new_instructions.push(ToT::String(format!("({}", s)));
+                } else if s == "end" {
+                    new_instructions.push(ToT::String(")".to_string()));
+                } else {
+                    new_instructions.push(ToT::String(s));
+                }
+            }
+            // We don't really have nested instructions, but if we did we would have had to recur
+            // here. TODO
+            ToT::Tagged(t) => new_instructions.push(ToT::Tagged(t)),
+        }
+    }
+
+    Tagged {
+        label: x.label,
+        prefix: x.prefix,
+        instructions: new_instructions,
+    }
+}
+
 fn main() {
     // Get input from file "./output.wat", which is the output of preprocessing.
     let input = std::fs::read_to_string("./output.wat").unwrap();
-    let parsed = unfold_funcs(parse_tagged(&input).unwrap());
+    // TODO: function that manually iterates over Tagged and replaces scopeys for each underlying
+    // Tagged found.
+    let parsed: Tagged = unfold_funcs(parse_tagged(&input).unwrap());
     println!("{}", parsed)
 }
